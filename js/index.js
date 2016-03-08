@@ -15,9 +15,6 @@ var ImageModule = function () {
 		_classCallCheck(this, ImageModule);
 
 		this.options = options;
-		if (!(this.options.centered != null)) {
-			this.options.centered = false;
-		}
 		if (!(this.options.getImage != null)) {
 			throw new Error("You should pass getImage");
 		}
@@ -26,6 +23,7 @@ var ImageModule = function () {
 		}
 		this.qrQueue = [];
 		this.imageNumber = 1;
+		this.relmap = {};
 	}
 
 	_createClass(ImageModule, [{
@@ -56,7 +54,10 @@ var ImageModule = function () {
 		}
 	}, {
 		key: "getNextImageName",
-		value: function getNextImageName() {
+		value: function getNextImageName(imgId) {
+			if(imgId){
+				return "image_generated_" + imgId + ".png";
+			}
 			var name = "image_generated_" + this.imageNumber + ".png";
 			this.imageNumber++;
 			return name;
@@ -91,24 +92,37 @@ var ImageModule = function () {
 				return this.replaceBy(startEnd, tagXml);
 			}
 
-			var tagXmlParagraph = tagXml.substr(0, 1) + ":p";
-
 			var startEnd = "<" + tagXml + "></" + tagXml + ">";
 			var imgBuffer;
-			try {
-				imgBuffer = this.options.getImage(tagValue, tag);
-			} catch (e) {
-				return this.replaceBy(startEnd, tagXml);
+			var imgId = this.options.getID ? this.options.getID(tagValue, tag) : false;
+			var rId = '';
+			if(imgId && this.relmap[imgId]){
+				rId = this.relmap[imgId];
+			}else{
+				try {
+					imgBuffer = this.options.getImage(tagValue, tag);
+				} catch (e) {
+					return this.replaceBy(startEnd, tagXml);
+				}
+				var imageRels = this.imageRels;
+				if (!imageRels) {
+					imageRels = this.imageRels = this.imgManager.loadImageRels();
+					if (!imageRels) {
+						return;
+					}
+				}
+				if(imgId){
+					rId = imageRels.addImageRels(this.getNextImageName(imgId), imgBuffer);
+					this.relmap[imgId] = rId;
+				}else{
+					rId = imageRels.addImageRels(this.getNextImageName(), imgBuffer);
+				}
 			}
-			var imageRels = this.imgManager.loadImageRels();
-			if (!imageRels) {
-				return;
-			}
-			var rId = imageRels.addImageRels(this.getNextImageName(), imgBuffer);
+			
 			var sizePixel = this.options.getSize(imgBuffer, tagValue, tag);
 			var size = [this.convertPixelsToEmus(sizePixel[0]), this.convertPixelsToEmus(sizePixel[1])];
-			var newText = this.options.centered ? this.getImageXmlCentered(rId, size) : this.getImageXml(rId, size);
-			var outsideElement = this.options.centered ? tagXmlParagraph : tagXml;
+			var newText = this.getImageXml(rId, size);
+			var outsideElement = tagXml;
 			return this.replaceBy(newText, outsideElement);
 		}
 	}, {
@@ -174,12 +188,19 @@ var ImageModule = function () {
 	}, {
 		key: "getImageXml",
 		value: function getImageXml(rId, size) {
-			return "<w:drawing>\n  <wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">\n    <wp:extent cx=\"" + size[0] + "\" cy=\"" + size[1] + "\"/>\n    <wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>\n    <wp:docPr id=\"2\" name=\"Image 2\" descr=\"image\"/>\n    <wp:cNvGraphicFramePr>\n      <a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/>\n    </wp:cNvGraphicFramePr>\n    <a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">\n      <a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">\n        <pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">\n          <pic:nvPicPr>\n            <pic:cNvPr id=\"0\" name=\"Picture 1\" descr=\"image\"/>\n            <pic:cNvPicPr>\n              <a:picLocks noChangeAspect=\"1\" noChangeArrowheads=\"1\"/>\n            </pic:cNvPicPr>\n          </pic:nvPicPr>\n          <pic:blipFill>\n            <a:blip r:embed=\"rId" + rId + "\">\n              <a:extLst>\n                <a:ext uri=\"{28A0092B-C50C-407E-A947-70E740481C1C}\">\n                  <a14:useLocalDpi xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\" val=\"0\"/>\n                </a:ext>\n              </a:extLst>\n            </a:blip>\n            <a:srcRect/>\n            <a:stretch>\n              <a:fillRect/>\n            </a:stretch>\n          </pic:blipFill>\n          <pic:spPr bwMode=\"auto\">\n            <a:xfrm>\n              <a:off x=\"0\" y=\"0\"/>\n              <a:ext cx=\"" + size[0] + "\" cy=\"" + size[1] + "\"/>\n            </a:xfrm>\n            <a:prstGeom prst=\"rect\">\n              <a:avLst/>\n            </a:prstGeom>\n            <a:noFill/>\n            <a:ln>\n              <a:noFill/>\n            </a:ln>\n          </pic:spPr>\n        </pic:pic>\n      </a:graphicData>\n    </a:graphic>\n  </wp:inline>\n</w:drawing>\n\t\t";
-		}
-	}, {
-		key: "getImageXmlCentered",
-		value: function getImageXmlCentered(rId, size) {
-			return "\t\t<w:p>\n\t\t  <w:pPr>\n\t\t\t<w:jc w:val=\"center\"/>\n\t\t  </w:pPr>\n\t\t  <w:r>\n\t\t\t<w:rPr/>\n\t\t\t<w:drawing>\n\t\t\t  <wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">\n\t\t\t\t<wp:extent cx=\"" + size[0] + "\" cy=\"" + size[1] + "\"/>\n\t\t\t\t<wp:docPr id=\"0\" name=\"Picture\" descr=\"\"/>\n\t\t\t\t<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">\n\t\t\t\t  <a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">\n\t\t\t\t\t<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">\n\t\t\t\t\t  <pic:nvPicPr>\n\t\t\t\t\t\t<pic:cNvPr id=\"0\" name=\"Picture\" descr=\"\"/>\n\t\t\t\t\t\t<pic:cNvPicPr>\n\t\t\t\t\t\t  <a:picLocks noChangeAspect=\"1\" noChangeArrowheads=\"1\"/>\n\t\t\t\t\t\t</pic:cNvPicPr>\n\t\t\t\t\t  </pic:nvPicPr>\n\t\t\t\t\t  <pic:blipFill>\n\t\t\t\t\t\t<a:blip r:embed=\"rId" + rId + "\"/>\n\t\t\t\t\t\t<a:stretch>\n\t\t\t\t\t\t  <a:fillRect/>\n\t\t\t\t\t\t</a:stretch>\n\t\t\t\t\t  </pic:blipFill>\n\t\t\t\t\t  <pic:spPr bwMode=\"auto\">\n\t\t\t\t\t\t<a:xfrm>\n\t\t\t\t\t\t  <a:off x=\"0\" y=\"0\"/>\n\t\t\t\t\t\t  <a:ext cx=\"" + size[0] + "\" cy=\"" + size[1] + "\"/>\n\t\t\t\t\t\t</a:xfrm>\n\t\t\t\t\t\t<a:prstGeom prst=\"rect\">\n\t\t\t\t\t\t  <a:avLst/>\n\t\t\t\t\t\t</a:prstGeom>\n\t\t\t\t\t\t<a:noFill/>\n\t\t\t\t\t\t<a:ln w=\"9525\">\n\t\t\t\t\t\t  <a:noFill/>\n\t\t\t\t\t\t  <a:miter lim=\"800000\"/>\n\t\t\t\t\t\t  <a:headEnd/>\n\t\t\t\t\t\t  <a:tailEnd/>\n\t\t\t\t\t\t</a:ln>\n\t\t\t\t\t  </pic:spPr>\n\t\t\t\t\t</pic:pic>\n\t\t\t\t  </a:graphicData>\n\t\t\t\t</a:graphic>\n\t\t\t  </wp:inline>\n\t\t\t</w:drawing>\n\t\t  </w:r>\n\t\t</w:p>\n\t\t";
+			var xml = [
+				'<w:drawing>',
+				'<wp:inline distT="0" distB="0" distL="0" distR="0">',
+				'<wp:extent cx="' + size[0] + '" cy="' + size[1] + '"/>',
+				'<wp:effectExtent l="0" t="0" r="0" b="0"/>',
+				'<wp:docPr id="2" name="Image 2" descr="image"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>',
+				'<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="Picture 1" descr="image"/><pic:cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId' + rId + '">',
+				'<a:extLst><a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"><a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/></a:ext></a:extLst></a:blip><a:srcRect/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr bwMode="auto"><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + size[0] + '" cy="' + size[1] + '"/>',
+				'</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></pic:spPr></pic:pic></a:graphicData></a:graphic>',
+				'</wp:inline>',
+				'</w:drawing>'
+			];
+			return xml.join('');
 		}
 	}]);
 
